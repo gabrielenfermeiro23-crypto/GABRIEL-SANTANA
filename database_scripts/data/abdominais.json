@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Abdominal Supra",
+    "category": "Abdômen",
+    "gif_url": "https://lpzbvpatmurmslowviau.supabase.co/storage/v1/object/public/exercicios/GIFS_ACADEMIA/abdominais/infra.gif"
+  },
+  {
+    "name": "Prancha Isometrica",
+    "category": "Abdômen",
+    "gif_url": "https://lpzbvpatmurmslowviau.supabase.co/storage/v1/object/public/exercicios/GIFS_ACADEMIA/abdominais/prancha.gif"
+  }
+]

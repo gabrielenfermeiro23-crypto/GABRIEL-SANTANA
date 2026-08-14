@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 
 // Componentes de Interface
 import Sidebar from '../../components/Sidebar';
-import MetricsCards from '../../components/MetricsCards';
-import StudentProfileView from '../../components/StudentProfileView';
+import MetricsCards from '../../components/dashboard/MetricsCards';
+import StudentProfileView from '../../components/student/StudentProfileView';
 
 // Abas do Painel
 import StudentsTab from './tabs/StudentsTab';

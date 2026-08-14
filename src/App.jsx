@@ -26,40 +26,45 @@ export default function App() {
       try {
         const user = currentSession.user;
 
-        // 1. Checa primeiro no metadata do Supabase Auth
-        let role = user.user_metadata?.role;
+        // 1. Checa no metadata do Supabase Auth
+        let rawRole = user.user_metadata?.role;
 
-        // 2. Se não estiver no metadata, busca na tabela 'students'
-        if (!role || (role !== 'aluno' && role !== 'student')) {
-          const { data: studentData } = await supabase
+        // Normaliza 'student' -> 'aluno'
+        let detectedRole = (rawRole === 'student' || rawRole === 'aluno') ? 'aluno' : rawRole;
+
+        // 2. Se não encontrou no metadata, consulta na tabela 'students'
+        if (!detectedRole) {
+          const { data: studentData, error } = await supabase
             .from('students')
             .select('id')
             .eq('email', user.email)
             .maybeSingle();
 
-          if (studentData) {
-            role = 'aluno';
+          if (!error && studentData) {
+            detectedRole = 'aluno';
           } else {
-            role = 'personal';
+            detectedRole = 'personal';
           }
         }
 
-        setUserRole(role === 'student' ? 'aluno' : role);
+        setUserRole(detectedRole);
       } catch (err) {
         console.error('Erro ao determinar perfil:', err);
-        setUserRole('personal');
+        // Em caso de erro crítico de rede, mantemos sem perfil por segurança
+        setUserRole(null);
       } finally {
         setLoading(false);
       }
     };
 
-    // 1. Verifica sessão inicial
+    // 1. Verifica a sessão inicial ao carregar
     supabase.auth.getSession().then(({ data: { session } }) => {
       checkUserRoleAndSession(session);
     });
 
-    // 2. Listener para Login / Logout
+    // 2. Listener em tempo real para Login / Logout
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setLoading(true); // Evita oscilação de tela na troca de estado
       checkUserRoleAndSession(session);
     });
 
@@ -81,7 +86,7 @@ export default function App() {
     }
   };
 
-  // Carregando
+  // Tela de Loading de Permissões
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
@@ -93,15 +98,13 @@ export default function App() {
     );
   }
 
-  // Não logado -> Tela de Auth
+  // 1. Não logado -> Tela de Login / Cadastro
   if (!session) {
     return <Auth />;
   }
 
-  // ==========================================
-  // 1. VISÃO EXCLUSIVA DO ALUNO
-  // ==========================================
-  if (userRole === 'aluno' || userRole === 'student') {
+  // 2. Visão do Aluno
+  if (userRole === 'aluno') {
     return (
       <StudentPortal
         session={session}
@@ -111,9 +114,7 @@ export default function App() {
     );
   }
 
-  // ==========================================
-  // 2. VISÃO EXCLUSIVA DO PERSONAL
-  // ==========================================
+  // 3. Visão do Personal Trainer (Default fallback para segurança de contas de personal)
   return (
     <Dashboard 
       session={session} 
