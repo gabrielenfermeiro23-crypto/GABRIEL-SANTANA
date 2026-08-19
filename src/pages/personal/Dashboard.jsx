@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 
 // Componentes de Interface
-import Sidebar from '../../components/Sidebar';
+import Sidebar from "../../components/layout/Sidebar";
 import MetricsCards from '../../components/dashboard/MetricsCards';
 import StudentProfileView from '../../components/student/StudentProfileView';
 
@@ -91,7 +91,7 @@ export default function Dashboard({ session, user, onLogout }) {
     setIsWorkoutModalOpen(true);
   };
 
-  // Mapeamento Direto e Forçado
+  // Mapeamento Direto e Forçado das Abas
   const renderTabContent = () => {
     const raw = String(activeTab).toLowerCase();
 
@@ -152,6 +152,11 @@ export default function Dashboard({ session, user, onLogout }) {
     );
   };
 
+  // Verifica se a aba atual é de Gestão de Alunos ou Financeiro para exibir os Cards no topo
+  const shouldShowMetrics = ['student', 'aluno', 'finan', 'gestao'].some((key) =>
+    String(activeTab).toLowerCase().includes(key)
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-cyan-400 font-bold space-y-3">
@@ -164,7 +169,7 @@ export default function Dashboard({ session, user, onLogout }) {
   return (
     <div className="relative flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
       
-      {/* 🖼️ PAPEL DE PAREDE */}
+      {/* 🖼️ PAPEL DE PAREDE COM OVERLAY */}
       <div 
         className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat opacity-30 pointer-events-none"
         style={{ backgroundImage: `url('/bg-meupersonal.png')` }}
@@ -197,8 +202,8 @@ export default function Dashboard({ session, user, onLogout }) {
           />
         ) : (
           <>
-            {/* Cards de Métricas */}
-            {MetricsCards && <MetricsCards metrics={metrics} />}
+            {/* Cards de Métricas Inteligentes (SÓ EXIBE SE ESTIVER NAS ABAS RELEVANTES) */}
+            {MetricsCards && shouldShowMetrics && <MetricsCards metrics={metrics} />}
 
             {/* Renderização do Conteúdo da Aba */}
             {renderTabContent()}

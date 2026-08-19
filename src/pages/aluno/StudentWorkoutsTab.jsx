@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Dumbbell, CheckCircle2, Clock, Calendar, CheckSquare, Square, Flame, Loader2, PlayCircle } from 'lucide-react';
-import { supabase } from '../../lib/supabase'; // Ajuste o caminho de importação para a lib do Supabase se necessário
+import { Dumbbell, CheckCircle2, Clock, Calendar, CheckSquare, Square, Flame, Loader2 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 
 export default function StudentWorkoutsTab() {
   const [workouts, setWorkouts] = useState([]);
   const [activeWorkout, setActiveWorkout] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [completedSets, setCompletedSets] = useState({}); // Controla séries concluídas ex: { 'itemId-setIndex': true }
+  const [completedSets, setCompletedSets] = useState({});
   const [loggingWorkout, setLoggingWorkout] = useState(false);
   const [workoutFinishedToday, setWorkoutFinishedToday] = useState(false);
 
@@ -14,60 +14,65 @@ export default function StudentWorkoutsTab() {
     fetchStudentWorkouts();
   }, []);
 
-  // 1. Busca os treinos vinculados ao Aluno Logado no Supabase
+  const handleSelectWorkout = (workout) => {
+    setActiveWorkout(workout);
+    setCompletedSets({});
+  };
+
   const fetchStudentWorkouts = async () => {
     try {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
 
       if (!user) {
-        console.warn('Nenhum usuário logado encontrado.');
         setLoading(false);
         return;
       }
 
-      // Busca os treinos vinculados ao ID do Aluno
+      // Tenta buscar da tabela 'workouts'
       const { data: workoutsData, error } = await supabase
         .from('workouts')
-        .select(`
-          id,
-          title,
-          day_of_week,
-          description,
-          workout_items (
-            id,
-            exercise_name,
-            sets,
-            reps,
-            rest_time,
-            notes,
-            order_index
-          )
-        `)
+        .select('*')
         .eq('student_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
       if (workoutsData && workoutsData.length > 0) {
-        // Ordena os exercícios internos pelo order_index
-        const formatted = workoutsData.map(w => ({
-          ...w,
-          exercises: (w.workout_items || []).sort((a, b) => (a.order_index || 0) - (b.order_index || 0))
-        }));
+        const formatted = workoutsData.map((w) => {
+          let exList = [];
+
+          // Se tiver exercícios salvos como JSON diretamente na coluna exercises
+          if (Array.isArray(w.exercises)) {
+            exList = w.exercises;
+          } else if (typeof w.exercises === 'string') {
+            try {
+              exList = JSON.parse(w.exercises);
+            } catch (e) {
+              exList = [];
+            }
+          }
+
+          return {
+            ...w,
+            title: w.title || w.name || 'Treino Sem Título',
+            exercises: exList
+          };
+        });
 
         setWorkouts(formatted);
-        // Define o primeiro treino como selecionado por padrão
         setActiveWorkout(formatted[0]);
+      } else {
+        setWorkouts([]);
+        setActiveWorkout(null);
       }
     } catch (error) {
       console.error('Erro ao carregar treinos do aluno:', error.message);
-  } finally {
+    } finally {
       setLoading(false);
     }
   };
 
-  // 2. Alterna a marcação individual de uma série
   const toggleSetCompletion = (itemId, setIndex) => {
     const key = `${itemId}-${setIndex}`;
     setCompletedSets((prev) => ({
@@ -76,19 +81,19 @@ export default function StudentWorkoutsTab() {
     }));
   };
 
-  // 3. Calcula porcentagem de progresso do treino atual
   const calculateProgress = () => {
-    if (!activeWorkout || !activeWorkout.exercises.length) return 0;
+    if (!activeWorkout || !activeWorkout.exercises || !activeWorkout.exercises.length) return 0;
 
     let totalSets = 0;
     let doneSets = 0;
 
-    activeWorkout.exercises.forEach((ex) => {
-      const setsCount = parseInt(ex.sets) || 1;
+    activeWorkout.exercises.forEach((ex, exIdx) => {
+      const exId = ex.id || exIdx;
+      const setsCount = parseInt(ex.sets, 10) || 1;
       totalSets += setsCount;
 
       for (let i = 0; i < setsCount; i++) {
-        if (completedSets[`${ex.id}-${i}`]) {
+        if (completedSets[`${exId}-${i}`]) {
           doneSets++;
         }
       }
@@ -97,7 +102,6 @@ export default function StudentWorkoutsTab() {
     return totalSets > 0 ? Math.round((doneSets / totalSets) * 100) : 0;
   };
 
-  // 4. Registra conclusão do Treino
   const handleFinishWorkout = async () => {
     if (!activeWorkout) return;
 
@@ -105,14 +109,21 @@ export default function StudentWorkoutsTab() {
       setLoggingWorkout(true);
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Grava no log de treinos concluídos no Supabase (se a tabela existir)
-      await supabase.from('workout_logs').insert([
+      if (!user) return;
+
+      const { error } = await supabase.from('logs').insert([
         {
-          student_id: user?.id,
-          workout_id: activeWorkout.id,
-          completed_at: new Date().toISOString()
+          user_id: user.id,
+          student_id: user.id,
+          action: 'Treino Concluído',
+          details: `Concluiu o treino: ${activeWorkout.title}`,
+          created_at: new Date().toISOString()
         }
       ]);
+
+      if (error) {
+        console.warn('Registro em logs opcional:', error.message);
+      }
 
       setWorkoutFinishedToday(true);
       setTimeout(() => setWorkoutFinishedToday(false), 5000);
@@ -127,7 +138,7 @@ export default function StudentWorkoutsTab() {
 
   return (
     <div className="space-y-6">
-      {/* Topo / Boas-vindas */}
+      {/* Topo / Cabeçalho */}
       <div className="bg-slate-900/80 border border-slate-800 p-6 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -153,7 +164,6 @@ export default function StudentWorkoutsTab() {
           <span>Carregando sua rotina de treinos...</span>
         </div>
       ) : workouts.length === 0 ? (
-        /* Caso o Personal ainda não tenha criado treinos */
         <div className="bg-slate-900/40 border border-slate-800 border-dashed rounded-2xl p-12 text-center space-y-3">
           <Dumbbell className="mx-auto text-slate-600" size={40} />
           <p className="text-base font-semibold text-slate-300">Nenhum treino atribuído ainda!</p>
@@ -162,10 +172,8 @@ export default function StudentWorkoutsTab() {
           </p>
         </div>
       ) : (
-        /* Conteúdo Principal */
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Aba Lateral: Seleção de Treinos / Fichas */}
+          {/* Aba Lateral: Fichas do Aluno */}
           <div className="lg:col-span-4 space-y-3">
             <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block px-1">
               Fichas Disponíveis ({workouts.length})
@@ -177,7 +185,7 @@ export default function StudentWorkoutsTab() {
                 return (
                   <button
                     key={w.id}
-                    onClick={() => setActiveWorkout(w)}
+                    onClick={() => handleSelectWorkout(w)}
                     className={`w-full text-left p-4 rounded-xl border transition-all flex items-center justify-between cursor-pointer ${
                       isActive
                         ? 'bg-emerald-500/10 border-emerald-500/50 text-white shadow-lg shadow-emerald-500/5'
@@ -200,12 +208,10 @@ export default function StudentWorkoutsTab() {
             </div>
           </div>
 
-          {/* Área Direita: Execução do Treino Selecionado */}
+          {/* Área Principal: Exercícios */}
           <div className="lg:col-span-8 space-y-4">
             {activeWorkout && (
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6">
-                
-                {/* Cabeçalho da Ficha */}
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-slate-800 pb-4">
                   <div>
                     <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Ficha Ativa</span>
@@ -218,54 +224,51 @@ export default function StudentWorkoutsTab() {
                   )}
                 </div>
 
-                {/* Lista de Exercícios */}
                 <div className="space-y-4">
-                  {activeWorkout.exercises.map((ex, exIndex) => {
-                    const setsCount = parseInt(ex.sets) || 3;
+                  {(activeWorkout.exercises || []).map((ex, exIndex) => {
+                    const setsCount = parseInt(ex.sets, 10) || 3;
+                    const exId = ex.id || exIndex;
 
                     return (
                       <div
-                        key={ex.id || exIndex}
+                        key={exId}
                         className="bg-slate-950 border border-slate-800/80 rounded-xl p-4 space-y-3 hover:border-slate-700 transition"
                       >
-                        {/* Nome do Exercício & Tags */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
                             <span className="w-6 h-6 rounded-lg bg-emerald-500/10 text-emerald-400 font-bold text-xs flex items-center justify-center border border-emerald-500/20">
                               {exIndex + 1}
                             </span>
-                            <h4 className="text-sm font-bold text-white">{ex.exercise_name || ex.name}</h4>
+                            <h4 className="text-sm font-bold text-white">{ex.exercise_name || ex.name || 'Exercício sem nome'}</h4>
                           </div>
 
                           <div className="flex items-center gap-3 text-xs text-slate-400">
                             <span className="flex items-center gap-1 font-mono">
-                              <Clock size={13} className="text-cyan-400" /> Descanso: {ex.rest_time || '60s'}
+                              <Clock size={13} className="text-cyan-400" /> Descanso: {ex.rest_time || ex.rest || '60s'}
                             </span>
                           </div>
                         </div>
 
-                        {/* Observações do Personal se houver */}
                         {ex.notes && (
                           <div className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800 text-xs text-slate-300 italic">
                             💡 <span className="font-semibold text-slate-200">Nota:</span> {ex.notes}
                           </div>
                         )}
 
-                        {/* Grade de Séries para Checkbox */}
                         <div className="pt-2 border-t border-slate-900">
                           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-2">
-                            Marcação de Séries (Meta: {ex.reps} reps)
+                            Marcação de Séries (Meta: {ex.reps || '10-12'} reps)
                           </span>
 
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             {Array.from({ length: setsCount }).map((_, setIdx) => {
-                              const isChecked = !!completedSets[`${ex.id}-${setIdx}`];
+                              const isChecked = !!completedSets[`${exId}-${setIdx}`];
 
                               return (
                                 <button
                                   key={setIdx}
                                   type="button"
-                                  onClick={() => toggleSetCompletion(ex.id, setIdx)}
+                                  onClick={() => toggleSetCompletion(exId, setIdx)}
                                   className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center justify-between cursor-pointer ${
                                     isChecked
                                       ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
@@ -279,13 +282,11 @@ export default function StudentWorkoutsTab() {
                             })}
                           </div>
                         </div>
-
                       </div>
                     );
                   })}
                 </div>
 
-                {/* Botão de Finalizar Treino */}
                 <div className="pt-4 border-t border-slate-800 flex justify-end">
                   <button
                     onClick={handleFinishWorkout}
@@ -300,11 +301,9 @@ export default function StudentWorkoutsTab() {
                     {loggingWorkout ? 'Registrando...' : 'Concluir Treino de Hoje 🎉'}
                   </button>
                 </div>
-
               </div>
             )}
           </div>
-
         </div>
       )}
     </div>

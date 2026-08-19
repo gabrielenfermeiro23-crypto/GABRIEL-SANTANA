@@ -14,15 +14,19 @@ export function useDashboardData() {
     try {
       setLoading(true);
 
+      // Busca perfis sem filtro restrito de role para evitar ocultar alunos cadastrados
       const [
-        { data: studentsData },
+        { data: studentsData, error: errStudents },
         { data: financialData },
         { data: exercisesData },
-        { data: workoutsData },
+        { data: workoutsData, error: errWorkouts },
         { data: assessmentsData },
         { data: logsData }
       ] = await Promise.all([
-        supabase.from('students').select('*').order('created_at', { ascending: false }),
+        supabase
+          .from('profiles')
+          .select('*')
+          .order('created_at', { ascending: false }),
         supabase.from('financial_records').select('*').order('due_date', { ascending: true }),
         supabase.from('custom_exercises').select('*').order('name', { ascending: true }),
         supabase.from('workouts').select('*').order('created_at', { ascending: false }),
@@ -30,7 +34,19 @@ export function useDashboardData() {
         supabase.from('logs').select('*').order('created_at', { ascending: false })
       ]);
 
-      if (studentsData) setStudents(studentsData);
+      if (errStudents) console.error("Erro ao carregar alunos:", errStudents.message);
+      if (errWorkouts) console.error("Erro ao carregar treinos:", errWorkouts.message);
+
+      // Filtra alunos aceitando variações de role (student, aluno, null, etc)
+      if (studentsData) {
+        const filteredStudents = studentsData.filter(s => 
+          !s.role || 
+          s.role.toLowerCase() === 'student' || 
+          s.role.toLowerCase() === 'aluno'
+        );
+        setStudents(filteredStudents.length > 0 ? filteredStudents : studentsData);
+      }
+
       if (financialData) setFinancialRecords(financialData);
       if (exercisesData) setCustomExercises(exercisesData);
       if (workoutsData) setWorkouts(workoutsData);
@@ -49,23 +65,21 @@ export function useDashboardData() {
   }, []);
 
   // ----------------------------------------------------
-  // Gestão de Alunos
+  // Gestão de Alunos (Salva na tabela 'profiles')
   // ----------------------------------------------------
   const saveStudent = async (studentData) => {
     try {
       if (studentData.id) {
-        // Atualizar aluno existente
         const { error } = await supabase
-          .from('students')
+          .from('profiles')
           .update(studentData)
           .eq('id', studentData.id);
 
         if (error) throw error;
       } else {
-        // Criar novo aluno
         const { error } = await supabase
-          .from('students')
-          .insert([studentData]);
+          .from('profiles')
+          .insert([{ ...studentData, role: 'student' }]);
 
         if (error) throw error;
       }
@@ -79,7 +93,7 @@ export function useDashboardData() {
 
   const deleteStudent = async (id) => {
     try {
-      const { error } = await supabase.from('students').delete().eq('id', id);
+      const { error } = await supabase.from('profiles').delete().eq('id', id);
       if (error) throw error;
       await fetchData();
     } catch (error) {
@@ -135,7 +149,6 @@ export function useDashboardData() {
 
   const saveFinancialRecord = async (recordData) => {
     try {
-      // 1. Obtém a sessão do usuário logado (Personal)
       const { data: { session } } = await supabase.auth.getSession();
       const currentUserId = session?.user?.id;
 
@@ -144,10 +157,8 @@ export function useDashboardData() {
         return;
       }
 
-      // 2. Busca o aluno selecionado no estado para capturar e-mail
       const selectedStudent = students.find((s) => String(s.id) === String(recordData.student_id));
 
-      // 3. Monta o payload completo enviando 'personal_id'
       const payload = {
         student_id: recordData.student_id,
         student_email: selectedStudent?.email || recordData.student_email || null,
@@ -155,7 +166,7 @@ export function useDashboardData() {
         due_date: recordData.due_date,
         status: recordData.status || 'pending',
         description: recordData.notes || recordData.description || 'Mensalidade',
-        personal_id: currentUserId // <-- Chave corrigida de user_id para personal_id
+        personal_id: currentUserId
       };
 
       const { error } = await supabase
@@ -172,38 +183,46 @@ export function useDashboardData() {
   };
 
   // ----------------------------------------------------
-  // Gestão de Treinos
+  // Gestão de Treinos (Corrigida para compatibilidade total com JSON e títulos)
   // ----------------------------------------------------
   const saveWorkout = async (workoutData) => {
     try {
+      // Normaliza os exercícios para garantir salvamento no formato de objeto/Array JSON
+      let formattedExercises = workoutData.exercises;
+      if (typeof formattedExercises === 'string') {
+        try {
+          formattedExercises = JSON.parse(formattedExercises);
+        } catch (e) {
+          formattedExercises = [];
+        }
+      }
+
+      const payload = {
+        student_id: workoutData.student_id || workoutData.user_id,
+        name: workoutData.title || workoutData.name || 'Treino',
+        title: workoutData.title || workoutData.name || 'Treino',
+        notes: workoutData.notes || workoutData.day_of_week || '',
+        day_of_week: workoutData.day_of_week || null,
+        exercises: formattedExercises
+      };
+
       if (workoutData.id) {
         const { error } = await supabase
           .from('workouts')
-          .update({
-            student_id: workoutData.student_id,
-            name: workoutData.name,
-            notes: workoutData.notes,
-            exercises: workoutData.exercises
-          })
+          .update(payload)
           .eq('id', workoutData.id);
 
         if (error) throw error;
       } else {
-        const cleanPayload = {
-          student_id: workoutData.student_id,
-          name: workoutData.name,
-          notes: workoutData.notes,
-          exercises: workoutData.exercises
-        };
-
         const { error } = await supabase
           .from('workouts')
-          .insert([cleanPayload]);
+          .insert([payload]);
 
         if (error) throw error;
       }
 
       await fetchData();
+      alert('Treino salvo com sucesso!');
     } catch (error) {
       console.error('Erro detalhado ao salvar treino no Supabase:', error);
       alert('Erro ao salvar treino: ' + (error.message || 'Erro desconhecido'));
@@ -247,7 +266,12 @@ export function useDashboardData() {
   // Cálculo das Métricas Gerais
   // ----------------------------------------------------
   const totalStudents = students.length;
-  const activeStudents = students.filter((s) => s.status === 'active').length;
+  
+  const activeStudents = students.filter((s) => {
+    const st = String(s.status || '').toLowerCase();
+    return st === 'active' || st === 'ativo' || st === 'ativa' || st === '';
+  }).length;
+
   const pendingPayments = financialRecords
     .filter((f) => String(f.status).toLowerCase() === 'pending' || String(f.status).toLowerCase() === 'pendente')
     .reduce((acc, curr) => acc + (parseFloat(curr.amount) || 0), 0);

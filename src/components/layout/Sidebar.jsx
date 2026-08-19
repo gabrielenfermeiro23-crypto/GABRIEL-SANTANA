@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase'; // Ajuste o caminho se necessário
+import { supabase } from '../../lib/supabase'; // Ajustado o caminho relativo do Supabase
 
 export default function Sidebar({ activeTab, setActiveTab, setSelectedStudent, onSignOut, theme }) {
   // Estado para armazenar os dados reais do perfil

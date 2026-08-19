@@ -8,9 +8,12 @@ export default function StudentProfileView({ student, allWorkouts = [], allAsses
   const handleAddWorkout = (e) => {
     e.preventDefault();
     if (!newWorkout.title) return;
+    
+    // Normaliza os exercícios para manter compatibilidade
     onSaveWorkout({
       student_id: student.id,
       title: newWorkout.title,
+      name: newWorkout.title,
       exercises: newWorkout.exercises,
       date: new Date().toLocaleDateString('pt-BR')
     });
@@ -30,19 +33,45 @@ export default function StudentProfileView({ student, allWorkouts = [], allAsses
     setNewAssessment({ weight: '', fatPercentage: '', muscleMass: '' });
   };
 
+  const renderExercisesList = (exercises) => {
+    if (!exercises) return 'Nenhum exercício cadastrado.';
+    
+    let list = exercises;
+    if (typeof exercises === 'string') {
+      try {
+        list = JSON.parse(exercises);
+      } catch (e) {
+        return exercises;
+      }
+    }
+
+    if (Array.isArray(list)) {
+      if (list.length === 0) return 'Nenhum exercício cadastrado.';
+      return (
+        <ul className="list-disc list-inside space-y-1 mt-2 text-zinc-300">
+          {list.map((ex, idx) => (
+            <li key={idx}>
+              <strong className="text-white">{ex.exercise_name || ex.name || 'Exercício'}:</strong> {ex.sets || 0} séries x {ex.reps || 0} reps {ex.rest_time ? `(Descanso: ${ex.rest_time})` : ''}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+
+    return String(exercises);
+  };
+
   if (!student) return null;
 
   return (
     <div className="space-y-6">
-      {/* Botão de Voltar */}
       <button 
         onClick={onBack}
-        className="text-base font-bold px-5 py-3 rounded-xl border border-zinc-800 bg-black/60 text-zinc-200 hover:bg-white/10 hover:border-cyan-400 transition-all flex items-center gap-2"
+        className="text-base font-bold px-5 py-3 rounded-xl border border-zinc-800 bg-black/60 text-zinc-200 hover:bg-white/10 hover:border-cyan-400 transition-all flex items-center gap-2 cursor-pointer"
       >
         ← Voltar para Lista de Alunos
       </button>
 
-      {/* Header Aluno com Capa */}
       <div className="rounded-2xl border border-zinc-800 overflow-hidden bg-zinc-900/90 shadow-2xl">
         <div 
           className="h-44 w-full bg-cover bg-center relative"
@@ -54,14 +83,14 @@ export default function StudentProfileView({ student, allWorkouts = [], allAsses
         <div className="p-6 relative -mt-14 flex flex-col md:flex-row items-start md:items-end justify-between gap-6">
           <div className="flex items-end gap-5">
             <div className="w-24 h-24 rounded-full bg-cyan-400 text-black flex items-center justify-center font-extrabold text-4xl border-4 border-zinc-950 shadow-2xl">
-              {student.name ? student.name[0].toUpperCase() : 'A'}
+              {(student.full_name || student.name) ? (student.full_name || student.name)[0].toUpperCase() : 'A'}
             </div>
             <div>
-              <h1 className="text-3xl font-extrabold text-white tracking-wide">{student.name}</h1>
+              <h1 className="text-3xl font-extrabold text-white tracking-wide">{student.full_name || student.name || 'Aluno'}</h1>
               <p className="text-base text-zinc-300 font-semibold mt-1">
                 Status:{' '}
-                <span className={student.status === 'active' ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>
-                  {student.status === 'active' ? 'Ativo' : 'Inativo'}
+                <span className={student.status === 'inactive' ? 'text-red-400 font-bold' : 'text-green-400 font-bold'}>
+                  {student.status === 'inactive' ? 'Inativo' : 'Ativo'}
                 </span>
               </p>
             </div>
@@ -77,7 +106,7 @@ export default function StudentProfileView({ student, allWorkouts = [], allAsses
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-5 py-3 rounded-xl text-base font-bold transition-all ${
+                className={`px-5 py-3 rounded-xl text-base font-bold transition-all cursor-pointer ${
                   activeTab === tab.id 
                     ? 'bg-cyan-400 text-black shadow-lg shadow-cyan-500/20 scale-[1.02]' 
                     : 'text-zinc-300 hover:text-white hover:bg-white/10'
@@ -90,7 +119,6 @@ export default function StudentProfileView({ student, allWorkouts = [], allAsses
         </div>
       </div>
 
-      {/* Conteúdo com Dados Reais e Sincronizados */}
       <div className="p-8 rounded-2xl border border-zinc-800 bg-zinc-900/90 shadow-2xl">
         {activeTab === 'summary' && (
           <div className="space-y-6">
@@ -126,24 +154,30 @@ export default function StudentProfileView({ student, allWorkouts = [], allAsses
                 />
                 <input 
                   type="text" 
-                  placeholder="Exercícios e Séries" 
+                  placeholder="Exercícios e Séries (ex: Supino 3x10)" 
                   value={newWorkout.exercises}
                   onChange={(e) => setNewWorkout({ ...newWorkout, exercises: e.target.value })}
                   className="p-4 rounded-xl bg-zinc-900 border border-zinc-700 text-white text-base focus:border-cyan-400 focus:outline-none"
                 />
               </div>
-              <button type="submit" className="px-6 py-3 bg-cyan-400 text-black font-bold rounded-xl hover:bg-cyan-300">
+              <button type="submit" className="px-6 py-3 bg-cyan-400 text-black font-bold rounded-xl hover:bg-cyan-300 transition cursor-pointer">
                 + Gravar Treino Adaptado
               </button>
             </form>
 
             <div className="grid grid-cols-1 gap-4">
-              {allWorkouts.map((w, idx) => (
-                <div key={idx} className="p-5 rounded-xl bg-black/40 border border-zinc-800">
-                  <p className="text-xl font-bold text-white">{w.title}</p>
-                  <p className="text-base text-zinc-400 mt-1">{w.exercises}</p>
-                </div>
-              ))}
+              {allWorkouts.length === 0 ? (
+                <p className="text-zinc-500 italic">Nenhum treino cadastrado para este aluno.</p>
+              ) : (
+                allWorkouts.map((w, idx) => (
+                  <div key={idx} className="p-5 rounded-xl bg-black/40 border border-zinc-800">
+                    <p className="text-xl font-bold text-white">{w.title || w.name || 'Treino Sem Título'}</p>
+                    <div className="text-base text-zinc-400 mt-1">
+                      {renderExercisesList(w.exercises)}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
@@ -162,7 +196,7 @@ export default function StudentProfileView({ student, allWorkouts = [], allAsses
                 />
                 <input 
                   type="text" 
-                  placeholder="% Gordura" 
+                  placeholder="Gordura" 
                   value={newAssessment.fatPercentage}
                   onChange={(e) => setNewAssessment({ ...newAssessment, fatPercentage: e.target.value })}
                   className="p-4 rounded-xl bg-zinc-900 border border-zinc-700 text-white text-base focus:border-cyan-400 focus:outline-none"
@@ -175,20 +209,24 @@ export default function StudentProfileView({ student, allWorkouts = [], allAsses
                   className="p-4 rounded-xl bg-zinc-900 border border-zinc-700 text-white text-base focus:border-cyan-400 focus:outline-none"
                 />
               </div>
-              <button type="submit" className="px-6 py-3 bg-cyan-400 text-black font-bold rounded-xl hover:bg-cyan-300">
+              <button type="submit" className="px-6 py-3 bg-cyan-400 text-black font-bold rounded-xl hover:bg-cyan-300 transition cursor-pointer">
                 + Salvar Avaliação
               </button>
             </form>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {allAssessments.map((a, idx) => (
-                <div key={idx} className="p-6 rounded-xl bg-black/40 border border-zinc-800 space-y-2">
-                  <p className="text-cyan-400 font-bold text-lg">Avaliação - {a.date}</p>
-                  <p className="text-base text-zinc-300">Peso: <strong className="text-white">{a.weight}</strong></p>
-                  <p className="text-base text-zinc-300">Gordura: <strong className="text-white">{a.fatPercentage}</strong></p>
-                  <p className="text-base text-zinc-300">Massa Magra: <strong className="text-white">{a.muscleMass}</strong></p>
-                </div>
-              ))}
+              {allAssessments.length === 0 ? (
+                <p className="text-zinc-500 italic col-span-2">Nenhuma avaliação realizada até o momento.</p>
+              ) : (
+                allAssessments.map((a, idx) => (
+                  <div key={idx} className="p-6 rounded-xl bg-black/40 border border-zinc-800 space-y-2">
+                    <p className="text-cyan-400 font-bold text-lg">Avaliação - {a.date || new Date(a.created_at || Date.now()).toLocaleDateString('pt-BR')}</p>
+                    <p className="text-base text-zinc-300">Peso: <strong className="text-white">{a.weight}</strong></p>
+                    <p className="text-base text-zinc-300">Gordura: <strong className="text-white">{a.fatPercentage || a.body_fat}</strong></p>
+                    <p className="text-base text-zinc-300">Massa Magra: <strong className="text-white">{a.muscleMass || a.muscle_mass}</strong></p>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}

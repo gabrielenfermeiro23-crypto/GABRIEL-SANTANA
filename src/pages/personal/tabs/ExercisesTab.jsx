@@ -1,344 +1,236 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Dumbbell, Search, Loader2, Eye, X } from 'lucide-react';
-import { supabase } from '../../../lib/supabase'; // Ajuste o caminho caso necessário
+import { Plus, Search, Video, Trash2, Dumbbell } from 'lucide-react';
+import { supabase } from '../../../lib/supabase';
 
-const DEFAULT_EXERCISES = [
-  { id: 'def-1', name: 'Supino Reto com Barra', category: 'Peitoral' },
-  { id: 'def-2', name: 'Supino Inclinado com Halteres', category: 'Peitoral' },
-  { id: 'def-3', name: 'Crossover na Polia High-to-Low', category: 'Peitoral' },
-  { id: 'def-4', name: 'Peck Deck / Voador', category: 'Peitoral' },
-  { id: 'def-5', name: 'Puxada Frontal Pulldown', category: 'Costas' },
-  { id: 'def-6', name: 'Remada Curvada com Barra', category: 'Costas' },
-  { id: 'def-7', name: 'Remada Baixa com Triângulo', category: 'Costas' },
-  { id: 'def-8', name: 'Pulldown na Polia Alta', category: 'Costas' },
-  { id: 'def-9', name: 'Agachamento Livre com Barra', category: 'Pernas' },
-  { id: 'def-10', name: 'Leg Press 45°', category: 'Pernas' },
-  { id: 'def-11', name: 'Cadeira Extensora', category: 'Pernas' },
-  { id: 'def-12', name: 'Mesa Flexora', category: 'Pernas' },
-  { id: 'def-13', name: 'Stiff com Halteres', category: 'Pernas' },
-  { id: 'def-14', name: 'Gêmeos Sentado (Panturrilha)', category: 'Pernas' },
-  { id: 'def-15', name: 'Desenvolvimento com Halteres', category: 'Ombros' },
-  { id: 'def-16', name: 'Elevação Lateral', category: 'Ombros' },
-  { id: 'def-17', name: 'Elevação Frontal na Polia', category: 'Ombros' },
-  { id: 'def-18', name: 'Rosca Direta com Barra W', category: 'Bíceps' },
-  { id: 'def-19', name: 'Rosca Alternada no Banco Inclinado', category: 'Bíceps' },
-  { id: 'def-20', name: 'Tríceps Corda na Polia', category: 'Tríceps' },
-  { id: 'def-21', name: 'Tríceps Testa com Barra W', category: 'Tríceps' },
-  { id: 'def-22', name: 'Abdominal Supra na Prancha', category: 'Core' },
-  { id: 'def-23', name: 'Prancha Ventral Isométrica', category: 'Core' }
+const MUSCLE_GROUPS = [
+  'Peito', 'Costas', 'Pernas', 'Ombros', 'Bíceps', 'Tríceps', 'Abdômen', 'Glúteos', 'Cardio'
 ];
 
-// Componente individual de Imagem para tratar erros de URL quebrada e manter leveza
-function ExerciseImage({ src, alt }) {
-  const [hasError, setHasError] = useState(false);
-
-  if (!src || hasError) {
-    return (
-      <div className="flex flex-col items-center gap-1.5 text-slate-600">
-        <Dumbbell size={28} />
-        <span className="text-[10px] font-bold uppercase tracking-wider">Sem GIF</span>
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={src}
-      alt={alt}
-      onError={() => setHasError(true)}
-      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-      loading="lazy"
-    />
-  );
-}
-
 export default function ExercisesTab() {
-  const [dbExercises, setDbExercises] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [exercises, setExercises] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todos');
-  const [newName, setNewName] = useState('');
-  const [newCategory, setNewCategory] = useState('Peitoral');
-  const [previewGif, setPreviewGif] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const categoriesList = [
-    'Todos',
-    'Peitoral',
-    'Costas',
-    'Pernas',
-    'Ombros',
-    'Bíceps',
-    'Tríceps',
-    'Core',
-    'Glúteos',
-    'Antebraço',
-    'Trapézio',
-    'Panturrilhas',
-    'Cardio'
-  ];
+  const [name, setName] = useState('');
+  const [targetGroup, setTargetGroup] = useState('Peito');
+  const [videoUrl, setVideoUrl] = useState('');
 
   useEffect(() => {
-    fetchExercises();
+    loadExercises();
   }, []);
 
-  const fetchExercises = async () => {
+  const loadExercises = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('exercises')
-        .select('*')
-        .order('name', { ascending: true });
-
+      const { data, error } = await supabase.from('exercises').select('*').order('name');
       if (error) throw error;
-
-      if (data) {
-        setDbExercises(data);
-      }
-    } catch (error) {
-      console.error('Erro ao buscar exercícios do Supabase:', error.message);
+      setExercises(data || []);
+    } catch (err) {
+      console.error('Erro ao carregar exercícios:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Unifica dando prioridade absoluta aos registros do banco (que contêm as URLs do Storage)
-  const allExercises = [...dbExercises];
-  DEFAULT_EXERCISES.forEach((def) => {
-    const exists = allExercises.some(
-      (item) => item.name.toLowerCase() === def.name.toLowerCase()
-    );
-    if (!exists) {
-      allExercises.push(def);
-    }
-  });
-
-  const handleSubmit = async (e) => {
+  const handleCreateExercise = async (e) => {
     e.preventDefault();
-    if (!newName.trim()) return;
+    if (!name.trim()) return alert('Informe o nome do exercício.');
 
     try {
-      setSubmitting(true);
-      const { data: { user } } = await supabase.auth.getUser();
-
-      const newExercisePayload = {
-        name: newName.trim(),
-        category: newCategory,
-        created_by: user ? user.id : null
-      };
-
-      const { data, error } = await supabase
-        .from('exercises')
-        .insert([newExercisePayload])
-        .select();
+      setLoading(true);
+      const { error } = await supabase.from('exercises').insert([
+        {
+          name,
+          target_muscle_group: targetGroup,
+          category: targetGroup === 'Pernas' || targetGroup === 'Glúteos' ? 'Membros Inferiores' : 'Membros Superiores',
+          video_url: videoUrl
+        }
+      ]);
 
       if (error) throw error;
 
-      if (data && data.length > 0) {
-        setDbExercises((prev) => [...prev, data[0]]);
-      }
-
-      setNewName('');
-    } catch (error) {
-      console.error('Erro ao cadastrar exercício:', error.message);
-      alert('Erro ao cadastrar exercício: ' + error.message);
+      alert('Exercício cadastrado com sucesso!');
+      setName('');
+      setVideoUrl('');
+      setIsModalOpen(false);
+      loadExercises();
+    } catch (err) {
+      alert('Erro ao cadastrar exercício: ' + err.message);
     } finally {
-      setSubmitting(false);
+      setLoading(false);
     }
   };
 
   const handleDeleteExercise = async (id) => {
-    if (String(id).startsWith('def-')) return;
-
-    if (!window.confirm('Tem certeza de que deseja remover este exercício?')) return;
+    if (!confirm('Deseja realmente excluir este exercício?')) return;
 
     try {
-      const { error } = await supabase
-        .from('exercises')
-        .delete()
-        .eq('id', id);
-
+      const { error } = await supabase.from('exercises').delete().eq('id', id);
       if (error) throw error;
-
-      setDbExercises((prev) => prev.filter((item) => item.id !== id));
-    } catch (error) {
-      console.error('Erro ao deletar exercício:', error.message);
-      alert('Erro ao excluir exercício: ' + error.message);
+      loadExercises();
+    } catch (err) {
+      alert('Erro ao deletar exercício: ' + err.message);
     }
   };
 
-  const filtered = allExercises.filter((ex) => {
-    const matchName = ex.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchCat =
-      selectedCategory === 'Todos' ||
-      ex.category?.toLowerCase() === selectedCategory.toLowerCase();
-    return matchName && matchCat;
+  const filteredExercises = exercises.filter((ex) => {
+    const muscle = ex.target_muscle_group || ex.category || '';
+    const matchesCategory = selectedCategory === 'Todos' || muscle.toLowerCase() === selectedCategory.toLowerCase();
+    const matchesSearch = ex.name.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesCategory && matchesSearch;
   });
 
-  const groupedExercises = filtered.reduce((acc, ex) => {
-    const cat = ex.category || 'Geral';
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(ex);
-    return acc;
-  }, {});
-
   return (
-    <div className="space-y-6">
-      {/* Cabeçalho */}
-      <div className="bg-slate-900/80 backdrop-blur-md p-6 rounded-2xl border border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Dumbbell className="text-cyan-400" />
-            Banco de Exercícios
-          </h2>
-          <p className="text-slate-400 text-sm mt-1">
-            Organizado por grupos musculares com GIFs de demonstração em tempo real.
-          </p>
+    <div className="p-6 space-y-6 bg-slate-950 min-h-screen text-slate-100">
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-slate-800 rounded-xl text-emerald-400">
+            <Dumbbell size={20} />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-white">Biblioteca de Exercícios</h2>
+            <p className="text-xs text-slate-400">Gerencie a lista total de exercícios e seus links explicativos.</p>
+          </div>
         </div>
 
-        <div className="relative w-full md:w-72">
-          <Search className="absolute left-3 top-3 text-slate-500" size={18} />
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-2 transition cursor-pointer"
+        >
+          <Plus size={16} /> Cadastrar Exercício
+        </button>
+      </div>
+
+      <div className="flex flex-col md:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-2.5 text-slate-500" size={16} />
           <input
             type="text"
             placeholder="Buscar exercício..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
           />
         </div>
-      </div>
 
-      {/* Form para Adicionar */}
-      <form onSubmit={handleSubmit} className="bg-slate-900/80 backdrop-blur-md p-4 rounded-2xl border border-slate-800 flex flex-col sm:flex-row gap-3 items-center">
-        <input
-          type="text"
-          placeholder="Nome do novo exercício customizado..."
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          className="flex-1 w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-cyan-500"
-          required
-        />
-        <select
-          value={newCategory}
-          onChange={(e) => setNewCategory(e.target.value)}
-          className="w-full sm:w-48 bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-cyan-500"
-        >
-          {categoriesList.filter(c => c !== 'Todos').map(c => (
-            <option key={c} value={c}>{c}</option>
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {['Todos', ...MUSCLE_GROUPS].map((group) => (
+            <button
+              key={group}
+              onClick={() => setSelectedCategory(group)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                selectedCategory === group
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                  : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white'
+              }`}
+            >
+              {group}
+            </button>
           ))}
-        </select>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-full sm:w-auto px-6 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl text-sm transition shadow-lg shadow-cyan-500/20 whitespace-nowrap flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-        >
-          {submitting ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
-          {submitting ? 'Salvando...' : 'Cadastrar'}
-        </button>
-      </form>
-
-      {/* Pills de Categorias */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
-        {categoriesList.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setSelectedCategory(cat)}
-            className={`px-4 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
-              selectedCategory === cat
-                ? 'bg-cyan-500 text-slate-950 font-bold'
-                : 'bg-slate-900/80 text-slate-400 hover:bg-slate-800 hover:text-white border border-slate-800'
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
+        </div>
       </div>
 
-      {/* Carregando State */}
       {loading ? (
-        <div className="text-center py-12 text-slate-400 flex justify-center items-center gap-2">
-          <Loader2 className="animate-spin text-cyan-400" size={24} />
-          <span>Carregando exercícios do banco...</span>
-        </div>
-      ) : Object.keys(groupedExercises).length === 0 ? (
-        <div className="text-center py-12 text-slate-500 bg-slate-900/40 rounded-2xl border border-slate-800">
+        <div className="text-center py-12 text-slate-500 text-xs">Carregando exercícios...</div>
+      ) : filteredExercises.length === 0 ? (
+        <div className="text-center py-12 text-slate-500 text-xs border border-dashed border-slate-800 rounded-xl">
           Nenhum exercício encontrado.
         </div>
       ) : (
-        Object.entries(groupedExercises).map(([category, items]) => (
-          <div key={category} className="space-y-3">
-            <div className="flex items-center gap-3">
-              <h3 className="text-md font-bold text-cyan-400 uppercase tracking-wider">{category}</h3>
-              <div className="h-px bg-slate-800 flex-1" />
-              <span className="text-xs text-slate-500 font-semibold">{items.length} exercícios</span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {items.map((ex) => (
-                <div 
-                  key={ex.id} 
-                  className="bg-slate-900/80 border border-slate-800/80 hover:border-cyan-500/40 rounded-2xl p-3 flex flex-col justify-between transition group shadow-lg"
-                >
-                  {/* GIF do Exercício Otimizado */}
-                  <div 
-                    onClick={() => ex.gif_url && setPreviewGif(ex)}
-                    className="relative w-full h-40 bg-slate-950 rounded-xl overflow-hidden mb-3 border border-slate-800 flex items-center justify-center cursor-pointer group-hover:opacity-95 transition"
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredExercises.map((ex) => (
+            <div key={ex.id} className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex justify-between items-center">
+              <div>
+                <h4 className="text-sm font-bold text-white">{ex.name}</h4>
+                <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full inline-block mt-1">
+                  {ex.target_muscle_group || ex.category || 'Geral'}
+                </span>
+                
+                {ex.video_url && (
+                  <a
+                    href={ex.video_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-[11px] text-red-400 hover:underline mt-2 font-medium"
                   >
-                    <ExerciseImage src={ex.gif_url} alt={ex.name} />
+                    <Video size={14} /> Demonstrativo em Vídeo
+                  </a>
+                )}
+              </div>
 
-                    {ex.gif_url && (
-                      <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-1 text-white text-xs font-bold">
-                        <Eye size={16} /> Ver Animação
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Nome e Ação */}
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold text-white text-sm line-clamp-1">{ex.name}</span>
-                    
-                    {!String(ex.id).startsWith('def-') && (
-                      <button 
-                        onClick={() => handleDeleteExercise(ex.id)} 
-                        title="Excluir exercício"
-                        className="text-slate-500 hover:text-red-400 p-1 cursor-pointer transition shrink-0"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+              <button
+                onClick={() => handleDeleteExercise(ex.id)}
+                className="text-slate-500 hover:text-red-400 p-2 transition cursor-pointer"
+                title="Excluir exercício"
+              >
+                <Trash2 size={16} />
+              </button>
             </div>
-          </div>
-        ))
+          ))}
+        </div>
       )}
 
-      {/* Modal de Previsualização do GIF */}
-      {previewGif && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 relative shadow-2xl space-y-4">
-            <button
-              onClick={() => setPreviewGif(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white p-2 rounded-full bg-slate-800/50 transition cursor-pointer"
-            >
-              <X size={20} />
-            </button>
-            
-            <div>
-              <span className="text-cyan-400 font-bold uppercase text-xs tracking-wider">
-                {previewGif.category}
-              </span>
-              <h3 className="text-xl font-extrabold text-white">{previewGif.name}</h3>
-            </div>
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl w-full max-w-md space-y-4 shadow-2xl">
+            <h3 className="text-base font-bold text-white">Cadastrar Novo Exercício</h3>
 
-            <div className="w-full h-72 bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 flex items-center justify-center">
-              <img
-                src={previewGif.gif_url}
-                alt={previewGif.name}
-                className="w-full h-full object-contain"
-              />
-            </div>
+            <form onSubmit={handleCreateExercise} className="space-y-4 text-xs">
+              <div>
+                <label className="text-slate-400 block mb-1">Nome do Exercício:</label>
+                <input
+                  type="text"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Ex: Tríceps Testa na Polia"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-400 block mb-1">Grupo Muscular:</label>
+                <select
+                  value={targetGroup}
+                  onChange={(e) => setTargetGroup(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                >
+                  {MUSCLE_GROUPS.map((g) => (
+                    <option key={g} value={g} className="bg-slate-900 text-white">{g}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-slate-400 block mb-1">Link do Vídeo Demonstrativo (opcional):</label>
+                <input
+                  type="url"
+                  value={videoUrl}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-bold hover:bg-slate-700 transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 py-2 bg-emerald-500 text-slate-950 rounded-xl font-bold hover:bg-emerald-400 transition cursor-pointer"
+                >
+                  {loading ? 'Salvando...' : 'Cadastrar'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
